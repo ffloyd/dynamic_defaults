@@ -6,6 +6,14 @@ defmodule BetterStruct do
   at runtime, making them truly dynamic.
   """
 
+  @type defstruct_behavior :: :keep | :ignore_defaults | :override
+  @type factory_fn :: atom() | false
+  @type option ::
+          {:defstruct_behavior, defstruct_behavior()}
+          | {:forbid_literal_syntax, boolean()}
+          | {:factory_fn, factory_fn()}
+  @type options :: [option()]
+
   @doc """
   Injects BetterStruct functionality into a module.
 
@@ -36,6 +44,7 @@ defmodule BetterStruct do
       Point.new()
       Point.new(%{x: 100})
   """
+  @spec __using__(opts :: options()) :: Macro.t()
   defmacro __using__(opts \\ []) do
     full_opts = [
       defstruct_behavior: Keyword.get(opts, :defstruct_behavior, :keep),
