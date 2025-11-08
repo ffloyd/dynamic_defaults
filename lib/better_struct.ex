@@ -61,8 +61,20 @@ defmodule BetterStruct do
 
     opts = Module.get_attribute(__CALLER__.module, :better_struct_options)
 
+    defstruct_fileds =
+      case opts[:defstruct_behavior] do
+        :ignore_defaults ->
+          Enum.map(fields, fn
+            {k, _v} when is_atom(k) -> k
+            k when is_atom(k) -> k
+          end)
+
+        _ ->
+          fields
+      end
+
     quote do
-      Kernel.defstruct(unquote(fields))
+      Kernel.defstruct(unquote(defstruct_fileds))
 
       if unquote(opts[:factory_fn]) do
         def unquote(opts[:factory_fn])(attrs \\ %{}) do

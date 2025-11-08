@@ -136,4 +136,30 @@ defmodule BetterStructTest do
       assert %NoFactory{value: "literal"} = result
     end
   end
+
+  describe "defstruct_behavior: :ignore_defaults" do
+    defmodule IgnoreDefaults do
+      use BetterStruct, defstruct_behavior: :ignore_defaults
+
+      defstruct name: "default_name", count: 42
+    end
+
+    test "struct literal syntax has nil defaults" do
+      result = %IgnoreDefaults{}
+
+      assert %IgnoreDefaults{name: nil, count: nil} = result
+    end
+
+    test "struct literal with explicit values works" do
+      result = %IgnoreDefaults{name: "custom", count: 100}
+
+      assert %IgnoreDefaults{name: "custom", count: 100} = result
+    end
+
+    test "__struct__/0 returns struct with nil defaults" do
+      result = IgnoreDefaults.__struct__()
+
+      assert %IgnoreDefaults{name: nil, count: nil} = result
+    end
+  end
 end
