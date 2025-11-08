@@ -36,7 +36,15 @@ defmodule BetterStruct do
       Point.new()
       Point.new(%{x: 100})
   """
-  defmacro __using__(_opts) do
+  defmacro __using__(opts \\ []) do
+    full_opts = [
+      defstruct_behavior: Keyword.get(opts, :defstruct_behavior, :keep),
+      forbid_literal_syntax: Keyword.get(opts, :forbid_literal_syntax, false),
+      factory_fn: Keyword.get(opts, :factory_fn, :new)
+    ]
+
+    :ok = Module.put_attribute(__CALLER__.module, :better_struct_options, full_opts)
+
     quote do
       import Kernel, except: [defstruct: 1]
       import unquote(__MODULE__), only: [defstruct: 1]
@@ -51,17 +59,21 @@ defmodule BetterStruct do
          _ -> false
        end)}
 
+    opts = Module.get_attribute(__CALLER__.module, :better_struct_options)
+
     quote do
       Kernel.defstruct(unquote(fields))
 
-      def new(attrs \\ %{}) do
-        final_attrs =
-          Map.merge(
-            unquote(defaults_map_ast),
-            Map.new(attrs)
-          )
+      if unquote(opts[:factory_fn]) do
+        def unquote(opts[:factory_fn])(attrs \\ %{}) do
+          final_attrs =
+            Map.merge(
+              unquote(defaults_map_ast),
+              Map.new(attrs)
+            )
 
-        struct!(__MODULE__, final_attrs)
+          struct!(__MODULE__, final_attrs)
+        end
       end
     end
   end

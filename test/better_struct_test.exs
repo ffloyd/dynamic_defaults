@@ -80,4 +80,60 @@ defmodule BetterStructTest do
       assert result.dyn_x == fixed_time
     end
   end
+
+  describe "factory_fn option" do
+    defmodule DefaultFactoryName do
+      use BetterStruct
+
+      defstruct value: "default"
+    end
+
+    defmodule CustomFactoryName do
+      use BetterStruct, factory_fn: :create
+
+      defstruct value: "custom"
+    end
+
+    defmodule NoFactory do
+      use BetterStruct, factory_fn: false
+
+      defstruct value: "no_factory"
+    end
+
+    test "default factory_fn creates new/0 and new/1" do
+      assert function_exported?(DefaultFactoryName, :new, 0)
+      assert function_exported?(DefaultFactoryName, :new, 1)
+
+      result = DefaultFactoryName.new()
+      assert %DefaultFactoryName{value: "default"} = result
+    end
+
+    test "custom factory_fn creates functions with specified name" do
+      assert function_exported?(CustomFactoryName, :create, 0)
+      assert function_exported?(CustomFactoryName, :create, 1)
+
+      refute function_exported?(CustomFactoryName, :new, 0)
+      refute function_exported?(CustomFactoryName, :new, 1)
+
+      result = CustomFactoryName.create()
+      assert %CustomFactoryName{value: "custom"} = result
+    end
+
+    test "custom factory_fn accepts attributes" do
+      result = CustomFactoryName.create(%{value: "overridden"})
+
+      assert %CustomFactoryName{value: "overridden"} = result
+    end
+
+    test "factory_fn: false does not create any factory function" do
+      refute function_exported?(NoFactory, :new, 0)
+      refute function_exported?(NoFactory, :new, 1)
+    end
+
+    test "factory_fn: false still allows struct literal syntax" do
+      result = %NoFactory{value: "literal"}
+
+      assert %NoFactory{value: "literal"} = result
+    end
+  end
 end
