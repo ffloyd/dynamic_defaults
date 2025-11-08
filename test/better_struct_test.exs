@@ -162,4 +162,39 @@ defmodule BetterStructTest do
       assert %IgnoreDefaults{name: nil, count: nil} = result
     end
   end
+
+  describe "defstruct_behavior: :override" do
+    defmodule OverrideDynamic do
+      use BetterStruct, defstruct_behavior: :override
+
+      defstruct timestamp: System.os_time()
+
+      def literal_a, do: %OverrideDynamic{}
+      def literal_b, do: %OverrideDynamic{}
+    end
+
+    test "struct literals from different location has different defaults" do
+      assert OverrideDynamic.literal_a().timestamp != OverrideDynamic.literal_b().timestamp
+    end
+
+    test "struct literal default fixed after compilation" do
+      first = OverrideDynamic.literal_a()
+      second = OverrideDynamic.literal_a()
+
+      assert first.timestamp == second.timestamp
+    end
+
+    test "struct!/0 re-evaluates dynamic defaults on each call" do
+      first = struct!(OverrideDynamic)
+      second = struct!(OverrideDynamic)
+
+      assert first.timestamp != second.timestamp
+    end
+
+    test "struct literal with explicit values overrides defaults" do
+      result = %OverrideDynamic{timestamp: 12_345}
+
+      assert %OverrideDynamic{timestamp: 12_345} = result
+    end
+  end
 end

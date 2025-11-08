@@ -63,7 +63,7 @@ defmodule BetterStruct do
 
     defstruct_fileds =
       case opts[:defstruct_behavior] do
-        :ignore_defaults ->
+        x when x in [:ignore_defaults, :override] ->
           Enum.map(fields, fn
             {k, _v} when is_atom(k) -> k
             k when is_atom(k) -> k
@@ -75,6 +75,15 @@ defmodule BetterStruct do
 
     quote do
       Kernel.defstruct(unquote(defstruct_fileds))
+
+      if unquote(opts[:defstruct_behavior] == :override) do
+        defoverridable(__struct__: 0, __struct__: 1)
+
+        def __struct__, do: Map.merge(super(), unquote(defaults_map_ast))
+
+        def __struct__(arg),
+          do: __struct__() |> Map.merge(Map.new(arg))
+      end
 
       if unquote(opts[:factory_fn]) do
         def unquote(opts[:factory_fn])(attrs \\ %{}) do
