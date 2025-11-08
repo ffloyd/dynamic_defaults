@@ -1,18 +1,68 @@
 defmodule BetterStruct do
   @moduledoc """
-  Documentation for `BetterStruct`.
+  Provides enhanced struct functionality with support for dynamic defaults.
+
+  `BetterStruct` allows you to define struct defaults that are re-evaluated
+  at runtime, making them truly dynamic.
   """
 
   @doc """
-  Hello world.
+  Injects BetterStruct functionality into a module.
+
+  ## Options
+
+  - `:defstruct_behavior` - Controls how `defstruct` macro behaves.
+    - `:keep` (default) - Keeps the original behavior of `defstruct`.
+    - `:ignore_defaults` - Defaults applied only via factory function.
+    - `:override` - Makes `__struct__/0` equivalent to factory function.
+
+  - `:forbid_literal_syntax` - When `true`, raises error on literal syntax `%Module{}`.
+    Default: `false`.
+
+  - `:factory_fn` - Controls factory function name.
+    - `:new` (default) - Creates `new/0` and `new/1`.
+    - Any atom - Creates factory with that name.
+    - `false` - Does not create factory function.
 
   ## Examples
 
-      iex> BetterStruct.hello()
-      :world
+      defmodule Point do
+        use BetterStruct
 
+        defstruct x: System.os_time(),
+                  y: System.os_time()
+      end
+
+      Point.new()
+      Point.new(%{x: 100})
   """
-  def hello do
-    :world
+  defmacro __using__(_opts) do
+    quote do
+      import Kernel, except: [defstruct: 1]
+      import unquote(__MODULE__), only: [defstruct: 1]
+    end
+  end
+
+  defmacro defstruct(fields) do
+    defaults_map_ast =
+      {:%{}, [],
+       Enum.filter(fields, fn
+         {k, _v} when is_atom(k) -> true
+         _ -> false
+       end)}
+
+    quote do
+      Kernel.defstruct(unquote(fields))
+
+      def new(attrs \\ %{}) do
+        final_attrs =
+          Map.merge(
+            unquote(defaults_map_ast),
+            Map.new(attrs)
+          )
+
+        struct!(__MODULE__, final_attrs)
+      end
+    end
   end
 end
