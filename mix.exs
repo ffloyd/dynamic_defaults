@@ -1,9 +1,9 @@
-defmodule BetterStruct.MixProject do
+defmodule DynamicDefaults.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :better_struct,
+      app: :dynamic_defaults,
       version: "0.0.1",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,

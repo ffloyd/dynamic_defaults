@@ -1,11 +1,11 @@
-# BetterStruct
+# DynamicDefaults
 
 Simplifies the dynamic defaults pattern in Elixir.
-Instead of manually writing factory functions that split defaults application across multiple places, define all defaults in `defstruct` and let `BetterStruct` handle the runtime re-evaluation.
+Instead of manually writing factory functions that split defaults application across multiple places, define all defaults in `defstruct` and let `DynamicDefaults` handle the runtime re-evaluation.
 
 ## Should you use this?
 
-Consider using `BetterStruct` if you fit the following criteria:
+Consider using `DynamicDefaults` if you fit the following criteria:
 
 - **Working on existing big codebase** where you need to add dynamic defaults and want to minimize refactoring effort.
 - **Want less boilerplate and better readability** for dynamic defaults pattern.
@@ -27,10 +27,10 @@ defmodule User do
 end
 
 #
-# Simplest BetterStruct usage, use it as a starting point
+# Simplest DynamicDefaults usage, use it as a starting point
 #
 defmodule User do
-  use BetterStruct
+  use DynamicDefaults
 
   defstruct name: "Bob", created_at: DateTime.utc_now()
 end
@@ -39,10 +39,10 @@ User.new()  # Re-evaluates DateTime.utc_now() each call
 %User{} # Evaluates all defaults at compile time (standard Elixir behavior)
 
 #
-# Advanced BetterStruct usage, option 1: defaults are applied ONLY via factory function
+# Advanced DynamicDefaults usage, option 1: defaults are applied ONLY via factory function
 #
 defmodule User do
-  use BetterStruct, defstruct_behavior: :ignore_defaults
+  use DynamicDefaults, defstruct_behavior: :ignore_defaults
 
   defstruct name: "Bob", created_at: DateTime.utc_now()
 end
@@ -51,10 +51,10 @@ User.new()  # Re-evaluates DateTime.utc_now() each call
 %User{} == %User{name: nil, created_at: nil} # any other way of struct creation except factory do not apply defaults
 
 #
-# Advanced BetterStruct usage, option 2: defaults are always applied at runtime, but literal syntax is forbidden
+# Advanced DynamicDefaults usage, option 2: defaults are always applied at runtime, but literal syntax is forbidden
 #
 defmodule User do
-  use BetterStruct, defstruct_behavior: :override, forbid_literal_syntax: true
+  use DynamicDefaults, defstruct_behavior: :override, forbid_literal_syntax: true
 
   defstruct name: "Bob", created_at: DateTime.utc_now()
 end
@@ -68,13 +68,13 @@ struct!(User)  # Re-evaluates DateTime.utc_now() each call
 ## How it works
 
 Elixir's `defstruct` evaluates defaults at compile time.
-`BetterStruct` wraps `defstruct` macro and it allows:
+`DynamicDefaults` wraps `defstruct` macro and it allows:
 
 - getting `defstruct`'s arguments' AST and generating a factory function that applies defaults at runtime
 - modifying `defstruct` arguments before passing them to original `defstruct` (to remove defaults or keep them as-is)
 - keeping call to the original `defstruct` instead of reimplementing its behavior (which would increase maintenance burden and risk of bugs)
 
-In order to implement `forbid_literal_syntax`, `BetterStruct` uses Elixir's compiler tracers to detect literal struct syntax usage.
+In order to implement `forbid_literal_syntax`, `DynamicDefaults` uses Elixir's compiler tracers to detect literal struct syntax usage.
 
 ## Options
 
@@ -86,7 +86,7 @@ In order to implement `forbid_literal_syntax`, `BetterStruct` uses Elixir's comp
 
 ```elixir
 defmodule Point do
-  use BetterStruct  # defstruct_behavior: :keep is default
+  use DynamicDefaults  # defstruct_behavior: :keep is default
 
   defstruct x: System.os_time(), y: System.os_time()
 end
@@ -104,7 +104,7 @@ It's similar to Golang's struct behavior, where defaults are only applied via co
 
 ```elixir
 defmodule Point do
-  use BetterStruct, defstruct_behavior: :ignore_defaults
+  use DynamicDefaults, defstruct_behavior: :ignore_defaults
 
   defstruct x: System.os_time(), y: System.os_time()
 end
@@ -127,7 +127,7 @@ See Risks & Tradeoffs section for details.
 
 ```elixir
 defmodule Point do
-  use BetterStruct, defstruct_behavior: :override
+  use DynamicDefaults, defstruct_behavior: :override
 
   defstruct x: System.os_time(), y: System.os_time()
 end
@@ -160,7 +160,7 @@ Uses Elixir's [compiler tracers](https://hexdocs.pm/elixir/1.19.2/Code.html#modu
 
 ```elixir
 defmodule Point do
-  use BetterStruct, defstruct_behavior: :override, forbid_literal_syntax: true
+  use DynamicDefaults, defstruct_behavior: :override, forbid_literal_syntax: true
 
   defstruct x: System.os_time(), y: System.os_time()
 end
@@ -184,7 +184,7 @@ Controls factory function name:
 
 ```elixir
 defmodule Point do
-  use BetterStruct, factory_fn: :create
+  use DynamicDefaults, factory_fn: :create
 
   defstruct x: System.os_time(), y: System.os_time()
 end
@@ -263,7 +263,7 @@ All defaults are dynamic from factory's perspective. To make some static, use mo
 
 ```elixir
 defmodule Point do
-  use BetterStruct
+  use DynamicDefaults
 
   @static_x System.os_time()  # Evaluated once at compile time
 
@@ -279,10 +279,10 @@ The module attribute makes the distinction explicit.
 Create a wrapper to set project-wide defaults:
 
 ```elixir
-defmodule MyApp.BetterStruct do
+defmodule MyApp.DynamicDefaults do
   defmacro __using__(_opts) do
     quote do
-      use BetterStruct,
+      use DynamicDefaults,
         defstruct_behavior: :override,
         forbid_literal_syntax: true
     end
@@ -290,7 +290,7 @@ defmodule MyApp.BetterStruct do
 end
 ```
 
-Then `use MyApp.BetterStruct` everywhere instead of `use BetterStruct, ...`.
+Then `use MyApp.DynamicDefaults` everywhere instead of `use DynamicDefaults, ...`.
 
 ## Related discussions
 
@@ -302,7 +302,7 @@ Started as a [proposal for Elixir core](https://elixirforum.com/t/runtime-calcul
 # mix.exs
 def deps do
   [
-    {:better_struct, "~> 0.0.1"}
+    {:dynamic_defaults, "~> 0.0.1"}
   ]
 end
 ```
@@ -315,7 +315,7 @@ If using `forbid_literal_syntax: true`, add to `mix.exs`:
 def project do
   [
     # ... other config ...
-    elixirc_options: [tracers: [BetterStruct.Tracer]]
+    elixirc_options: [tracers: [DynamicDefaults.Tracer]]
   ]
 end
 ```

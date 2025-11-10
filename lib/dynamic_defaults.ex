@@ -1,4 +1,4 @@
-defmodule BetterStruct do
+defmodule DynamicDefaults do
   @moduledoc """
   Enables dynamic defaults for structs by re-evaluating default expressions at runtime.
 
@@ -19,13 +19,13 @@ defmodule BetterStruct do
   @type options :: [option()]
 
   @doc """
-  Configures the module to use BetterStruct's dynamic defaults functionality.
+  Configures the module to use DynamicDefaults's dynamic defaults functionality.
 
   Responsible for setting up the chosen struct creation strategy by importing
   a custom `defstruct/1` macro that captures default expressions as AST for
   later re-evaluation.
 
-  Expects to be called via `use BetterStruct` before `defstruct` is used in the module.
+  Expects to be called via `use DynamicDefaults` before `defstruct` is used in the module.
 
   ## Options
 
@@ -47,7 +47,7 @@ defmodule BetterStruct do
   ## Examples
 
       defmodule Point do
-        use BetterStruct
+        use DynamicDefaults
 
         defstruct x: System.os_time(),
                   y: System.os_time()
@@ -64,10 +64,10 @@ defmodule BetterStruct do
       factory_fn: Keyword.get(opts, :factory_fn, :new)
     ]
 
-    :ok = Module.put_attribute(__CALLER__.module, :better_struct_options, full_opts)
+    :ok = Module.put_attribute(__CALLER__.module, :dynamic_defaults_options, full_opts)
 
     if full_opts[:forbid_literal_syntax] do
-      marker_attr_name = BetterStruct.Tracer.mod_attr_name()
+      marker_attr_name = DynamicDefaults.Tracer.mod_attr_name()
 
       :ok = Module.register_attribute(__CALLER__.module, marker_attr_name, persist: true)
 
@@ -93,7 +93,7 @@ defmodule BetterStruct do
          _ -> false
        end)}
 
-    opts = Module.get_attribute(__CALLER__.module, :better_struct_options)
+    opts = Module.get_attribute(__CALLER__.module, :dynamic_defaults_options)
 
     defstruct_fields =
       case opts[:defstruct_behavior] do

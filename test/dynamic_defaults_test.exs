@@ -1,28 +1,28 @@
-defmodule BetterStructTest do
+defmodule DynamicDefaultsTest do
   use ExUnit.Case
-  doctest BetterStruct
+  doctest DynamicDefaults
 
   describe "factory function behavior" do
     defmodule KeywordWithDefaults do
-      use BetterStruct
+      use DynamicDefaults
 
       defstruct name: "default", count: 0
     end
 
     defmodule ListSyntax do
-      use BetterStruct
+      use DynamicDefaults
 
       defstruct [:x, :y]
     end
 
     defmodule MixedSyntax do
-      use BetterStruct
+      use DynamicDefaults
 
       defstruct [:x, y: "default_y"]
     end
 
-    defmodule DynamicDefaults do
-      use BetterStruct
+    defmodule DynamicDefaultsTest do
+      use DynamicDefaults
 
       defstruct dyn_x: System.os_time(), dyn_y: System.os_time()
     end
@@ -46,8 +46,8 @@ defmodule BetterStructTest do
     end
 
     test "re-evaluates dynamic defaults on each call to new/0" do
-      first = DynamicDefaults.new()
-      second = DynamicDefaults.new()
+      first = DynamicDefaultsTest.new()
+      second = DynamicDefaultsTest.new()
 
       # dyn_x and dyn_y should be different because System.os_time() is re-evaluated
       refute first.dyn_x == second.dyn_x
@@ -75,7 +75,7 @@ defmodule BetterStructTest do
     test "new/1 overrides dynamic defaults when provided" do
       fixed_time = 123_456_789
 
-      result = DynamicDefaults.new(%{dyn_x: fixed_time})
+      result = DynamicDefaultsTest.new(%{dyn_x: fixed_time})
 
       assert result.dyn_x == fixed_time
     end
@@ -83,19 +83,19 @@ defmodule BetterStructTest do
 
   describe "factory_fn option" do
     defmodule DefaultFactoryName do
-      use BetterStruct
+      use DynamicDefaults
 
       defstruct value: "default"
     end
 
     defmodule CustomFactoryName do
-      use BetterStruct, factory_fn: :create
+      use DynamicDefaults, factory_fn: :create
 
       defstruct value: "custom"
     end
 
     defmodule NoFactory do
-      use BetterStruct, factory_fn: false
+      use DynamicDefaults, factory_fn: false
 
       defstruct value: "no_factory"
     end
@@ -139,7 +139,7 @@ defmodule BetterStructTest do
 
   describe "defstruct_behavior: :ignore_defaults" do
     defmodule IgnoreDefaults do
-      use BetterStruct, defstruct_behavior: :ignore_defaults
+      use DynamicDefaults, defstruct_behavior: :ignore_defaults
 
       defstruct name: "default_name", count: 42
     end
@@ -165,7 +165,7 @@ defmodule BetterStructTest do
 
   describe "defstruct_behavior: :override" do
     defmodule OverrideDynamic do
-      use BetterStruct, defstruct_behavior: :override
+      use DynamicDefaults, defstruct_behavior: :override
 
       defstruct timestamp: System.os_time()
 
@@ -200,21 +200,21 @@ defmodule BetterStructTest do
 
   describe "forbid_literal_syntax" do
     def compile_with_tracer(quoted) do
-      Code.put_compiler_option(:tracers, [BetterStruct.Tracer])
+      Code.put_compiler_option(:tracers, [DynamicDefaults.Tracer])
       result = Code.compile_quoted(quoted)
       Code.put_compiler_option(:tracers, [])
       result
     end
 
     def eval_with_tracer(quoted) do
-      Code.put_compiler_option(:tracers, [BetterStruct.Tracer])
+      Code.put_compiler_option(:tracers, [DynamicDefaults.Tracer])
       result = Code.eval_quoted(quoted)
       Code.put_compiler_option(:tracers, [])
       result
     end
 
     defmodule ForbidLiteral do
-      use BetterStruct, forbid_literal_syntax: true, defstruct_behavior: :override
+      use DynamicDefaults, forbid_literal_syntax: true, defstruct_behavior: :override
 
       defstruct name: "default", count: 0
     end
@@ -224,7 +224,7 @@ defmodule BetterStructTest do
         compile_with_tracer(
           quote do
             defmodule LiteralSyntaxNoArgsTest do
-              def create, do: %BetterStructTest.ForbidLiteral{}
+              def create, do: %DynamicDefaultsTest.ForbidLiteral{}
             end
           end
         )
@@ -236,7 +236,7 @@ defmodule BetterStructTest do
         compile_with_tracer(
           quote do
             defmodule LiteralSyntaxWithArgsTest do
-              def create, do: %BetterStructTest.ForbidLiteral{name: "custom"}
+              def create, do: %DynamicDefaultsTest.ForbidLiteral{name: "custom"}
             end
           end
         )
@@ -249,7 +249,7 @@ defmodule BetterStructTest do
           quote do
             defmodule LiteralSyntaxInMacroTest do
               defmacro create do
-                mod = BetterStructTest.ForbidLiteral
+                mod = DynamicDefaultsTest.ForbidLiteral
 
                 quote do
                   %unquote(mod){}
@@ -268,22 +268,26 @@ defmodule BetterStructTest do
     end
 
     test "literal syntax in pattern matching works" do
-      eval_with_tracer(quote do
-        defmodule LiteralSyntaxInPatternMatchTest do
-          def match(%BetterStructTest.ForbidLiteral{name: name}) do
-            name
+      eval_with_tracer(
+        quote do
+          defmodule LiteralSyntaxInPatternMatchTest do
+            def match(%DynamicDefaultsTest.ForbidLiteral{name: name}) do
+              name
+            end
           end
-        end
 
-        LiteralSyntaxInPatternMatchTest.match(struct!(BetterStructTest.ForbidLiteral, name: "matched"))
-      end)
+          LiteralSyntaxInPatternMatchTest.match(
+            struct!(DynamicDefaultsTest.ForbidLiteral, name: "matched")
+          )
+        end
+      )
     end
 
     test "struct!/1 compiles with forbid_literal_syntax" do
       {result, _} =
         eval_with_tracer(
           quote do
-            struct!(BetterStructTest.ForbidLiteral)
+            struct!(DynamicDefaultsTest.ForbidLiteral)
           end
         )
 
@@ -294,7 +298,7 @@ defmodule BetterStructTest do
       {result, _} =
         eval_with_tracer(
           quote do
-            struct!(BetterStructTest.ForbidLiteral, name: "custom")
+            struct!(DynamicDefaultsTest.ForbidLiteral, name: "custom")
           end
         )
 
@@ -305,7 +309,7 @@ defmodule BetterStructTest do
       {result, _} =
         eval_with_tracer(
           quote do
-            BetterStructTest.ForbidLiteral.new()
+            DynamicDefaultsTest.ForbidLiteral.new()
           end
         )
 
@@ -316,7 +320,7 @@ defmodule BetterStructTest do
       {result, _} =
         eval_with_tracer(
           quote do
-            BetterStructTest.ForbidLiteral.new(%{name: "custom", count: 42})
+            DynamicDefaultsTest.ForbidLiteral.new(%{name: "custom", count: 42})
           end
         )
 
@@ -327,7 +331,7 @@ defmodule BetterStructTest do
       {result, _} =
         eval_with_tracer(
           quote do
-            base = struct!(BetterStructTest.ForbidLiteral)
+            base = struct!(DynamicDefaultsTest.ForbidLiteral)
             %{base | name: "updated"}
           end
         )

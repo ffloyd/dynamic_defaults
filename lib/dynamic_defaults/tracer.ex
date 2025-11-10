@@ -1,21 +1,21 @@
-defmodule BetterStruct.Tracer do
+defmodule DynamicDefaults.Tracer do
   @moduledoc """
   Enforces `forbid_literal_syntax` option by intercepting struct expansions at compile time.
 
   This tracer is responsible for detecting when a struct marked with `forbid_literal_syntax: true`
   is being created using literal syntax `%Module{}` and raising a compilation error to prevent it.
 
-  Expects to be registered as a compiler tracer via `Code.put_compiler_option(:tracers, [BetterStruct.Tracer])`.
-  Or by adding `elixirc_options: [tracers: [BetterStruct.Tracer]]` to the Mix project configuration.
+  Expects to be registered as a compiler tracer via `Code.put_compiler_option(:tracers, [DynamicDefaults.Tracer])`.
+  Or by adding `elixirc_options: [tracers: [DynamicDefaults.Tracer]]` to the Mix project configuration.
   """
 
   @doc """
   Returns the module attribute name used to mark structs that forbid literal syntax.
 
-  This attribute is set by BetterStruct when `forbid_literal_syntax: true` is configured,
+  This attribute is set by DynamicDefaults when `forbid_literal_syntax: true` is configured,
   allowing the tracer to identify which structs should be protected.
   """
-  def mod_attr_name, do: :better_struct_forbidden_literals
+  def mod_attr_name, do: :dynamic_defaults_forbidden_literals
 
   @doc """
   Intercepts compiler events and enforces literal syntax prohibition.
