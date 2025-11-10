@@ -1,192 +1,192 @@
 # BetterStruct
 
-This package aims to solve a design problem I often encounter when working with Elixir structs:
+Simplifies the dynamic defaults pattern in Elixir.
+Instead of manually writing factory functions that split defaults application across multiple places, define all defaults in `defstruct` and let `BetterStruct` handle the runtime re-evaluation.
 
-> Static and dynamic defaults for struct fields require different approaches.
+## Should you use this?
 
-For example, you need `created_at: DateTime.utc_now()` to be re-evaluated each time a new instance of a struct is created, but `defstruct created_at: DateTime.utc_now()` evaluates once at compile time, giving all instances the same _default value_ of `created_at`.
+Consider using `BetterStruct` if you fit the following criteria:
 
-The idiomatic way to address this problem is to create a "factory function" that applies dynamic defaults at runtime:
+- **Working on existing big codebase** where you need to add dynamic defaults and want to minimize refactoring effort.
+- **Want less boilerplate and better readability** for dynamic defaults pattern.
+
+On small or fresh projects using this library may be overkill, but read this README anyway to understand the problem this library solves and identify your way to prevent it in the future of your codebase.
+
+## Quick Start
 
 ```elixir
-defmodule Example do
-  defstruct static: "This #{System.os_time()} will be the same number each time we create a struct via %Example{}",
-            dynamic: nil
+#
+# Vanilla: Manual factory function
+#
+defmodule User do
+  defstruct name: "default name", created_at: nil
 
-  # a "factory function" to create structs with dynamic defaults
   def new(attrs \\ %{}) do
-    final_attrs = Map.merge(%{
-      dynamic: "This #{System.os_time()} will be a different number each time we create a struct via new()"
-    }, attrs)
-
-    struct!(__MODULE__, final_attrs)
+    struct!(__MODULE__, Map.merge(%{created_at: DateTime.utc_now()}, attrs))
   end
 end
-```
 
-When you from the beginning always create your structs via the `new/1` function, this works fine and everyone is happy.
-Ok, I'm not that happy because I do not like the fact that static and dynamic defaults are defined in different places and when I need to understand "what are the defaults for this struct?" I should always remember that there're at least 2 places for them and I need to merge defaults from all that places in my head.
-In most cases, it's not a big deal, but sometimes it is really annoying and feels ugly.
+#
+# Simplest BetterStruct usage, use it as a starting point
+#
+defmodule User do
+  use BetterStruct
 
-But the really noticeable problem here, is that I see that developers usually do not introduce a `new/1` function until the first time they need a dynamic default.
-At that point, they have to refactor all the places where they create the struct via `%Example{...}` to use `Example.new(...)` instead.
-On small codebases, this is not a big deal.
-On larger codebases, this can be an annoying and error-prone task.
-
-Alternatively, developers often prefer to achieve their goal without dynamic defaults, which sometimes leads to a better architecture, sometimes not.
-
-I believe that dynamic defaults are a convenient pattern that should be easier and more straightforward to implement.
-If you are starting a new project, then you can accept convention always to use factory functions and you can code comfortably without this package.
-But if you are working on an existing project, or if you just want to avoid the boilerplate of factory functions, then this package can help you.
-The ideas it is based on are:
-
-- static and dynamic defaults can be defined in the same place using similar syntax
-- when creating a new struct, you either apply both types of defaults, or none
-- a single way of creating a struct should be enforced throughout the codebase
-- keep things as close to idiomatic Elixir as possible
-- focus on the cases where support of dynamic defaults was overlooked in the past and now needs to be added
-- let an engineer decide how far from standard Elixir behavior they want to go
-
-## Usage
-
-`BetterStruct` is designed to be injected into existing structs.
-In its simplest form, it provides a `new/1` function that applies all defaults as dynamic ones.
-
-Normally, `defstruct` evaluates default value expressions at compile time.
-The `new/1` function takes the exact same AST (of expressions) and re-evaluates them at runtime, making them dynamic.
-
-```elixir
-defmodule Point do
-  use BetterStruct # must be placed before `defstruct`
-
-  defstruct x: System.os_time(),
-            y: System.os_time()
+  defstruct name: "Bob", created_at: DateTime.utc_now()
 end
 
-defmodule Test do
-  def via_literal, do: %Point{}
-  def via_factory, do: Point.new()
+User.new()  # Re-evaluates DateTime.utc_now() each call
+%User{} # Evaluates all defaults at compile time (standard Elixir behavior)
+
+#
+# Advanced BetterStruct usage, option 1: defaults are applied ONLY via factory function
+#
+defmodule User do
+  use BetterStruct, defstruct_behavior: :ignore_defaults
+
+  defstruct name: "Bob", created_at: DateTime.utc_now()
 end
 
-iex> Test.via_literal() == Test.via_literal()
-true # %Point{} created via literal has static defaults, like usual
+User.new()  # Re-evaluates DateTime.utc_now() each call
+%User{} == %User{name: nil, created_at: nil} # any other way of struct creation except factory do not apply defaults
 
-iex> Test.via_factory() == Test.via_factory()
-false # %Point{} created via Point.new() has dynamic defaults recalculated each call.
+#
+# Advanced BetterStruct usage, option 2: defaults are always applied at runtime, but literal syntax is forbidden
+#
+defmodule User do
+  use BetterStruct, defstruct_behavior: :override, forbid_literal_syntax: true
+
+  defstruct name: "Bob", created_at: DateTime.utc_now()
+end
+
+User.new()  # Re-evaluates DateTime.utc_now() each call
+struct!(User)  # Re-evaluates DateTime.utc_now() each call
+%User{}  # Compile error: creation via literal struct syntax is forbidden for User struct
 ```
 
-A good starting point, but a bit inconsistent.
-Next step is to start enabling modifiers.
+
+## How it works
+
+Elixir's `defstruct` evaluates defaults at compile time.
+`BetterStruct` wraps `defstruct` macro and it allows:
+
+- getting `defstruct`'s arguments' AST and generating a factory function that applies defaults at runtime
+- modifying `defstruct` arguments before passing them to original `defstruct` (to remove defaults or keep them as-is)
+- keeping call to the original `defstruct` instead of reimplementing its behavior (which would increase maintenance burden and risk of bugs)
+
+In order to implement `forbid_literal_syntax`, `BetterStruct` uses Elixir's compiler tracers to detect literal struct syntax usage.
+
+## Options
 
 ### `defstruct_behavior`
 
-`BetterStruct` allows you to control how `defstruct` macro behaves via the `defstruct_behavior` option.
+**Most important option.** Controls how the original `defstruct` is used under the hood.
 
-If you look into `defstruct` implementation, you will see that it creates a function called `__struct__/0` that is always used when creating structs.
-When you use `%Point{}`, it calls `Point.__struct__/0` under the hood _at compile time_.
-When you use `struct(Point)`, `struct(Point, ...)`, etc - it calls `Point.__struct__/0` _at runtime_.
+`:keep` (default) - standard behavior, `%Point{}` syntax, `struct` and `struct!` functions still use defaults as static compile-time values; only factory function applies defaults at runtime
 
-Allowed values are:
+```elixir
+defmodule Point do
+  use BetterStruct  # defstruct_behavior: :keep is default
 
-- `:keep` - default one. Keeps the original behavior of `defstruct`.
-- `:ignore_defaults` - defaults will be applied _only_ when using the factory function (e.g., `new/1`). Using `%Point{}` will create a struct with all fields set to `nil` (or will fail if `@enforce_keys` is used for some fields). It does _not_ directly modify `__struct__/0`, just removes defaults from the call to original `defstruct` macro. This option is safe and does not rely on any undocumented behavior.
-- `:override` - makes `__struct__/0` be equivalent to the factory function (e.g., `new/0`).
+  defstruct x: System.os_time(), y: System.os_time()
+end
 
-Example of `:ignore_defaults` usage:
+iex> %Point{} == %Point{}
+true  # Compile-time defaults (standard Elixir)
+
+iex> Point.new() == Point.new()
+false  # Runtime re-evaluation via factory
+```
+
+`:ignore_defaults` - `%Point{}` syntax, `struct` and `struct!` functions create structs with `nil` fields.
+Only factory function applies defaults as runtime-calculated values.
+It's similar to Golang's struct behavior, where defaults are only applied via constructor functions.
 
 ```elixir
 defmodule Point do
   use BetterStruct, defstruct_behavior: :ignore_defaults
 
-  defstruct x: System.os_time(),
-            y: System.os_time()
+  defstruct x: System.os_time(), y: System.os_time()
 end
 
-defmodule Test do
-  def via_literal, do: %Point{}
-  def via_factory, do: Point.new()
-end
+iex> %Point{}
+%Point{x: nil, y: nil}  # No defaults via literal
 
-iex> Test.via_literal() == %Point{x: nil, y: nil}
-true # %Point{} created via literal has no static defaults
+iex> struct!(Point)
+%Point{x: nil, y: nil}  # No defaults via struct!
 
-iex> Test.via_factory()
-%Point{x: 1699876543210, y: 1699876543211} # numbers will vary each call
+iex> Point.new()
+%Point{x: 1699876543210, y: 1699876543211}  # Defaults via factory
 ```
 
-Example of `:override` usage:
+
+`:override` - makes `struct` and `struct!` recalculate defaults at runtime.
+Literal `%Point{}` gets compile-time snapshot.
+It's achieved by overriding _undocumented_ `__struct__/0` and `__struct__/1` functions generated by `defstruct`.
+See Risks & Tradeoffs section for details.
 
 ```elixir
 defmodule Point do
   use BetterStruct, defstruct_behavior: :override
 
-  defstruct x: System.os_time(),
-            y: System.os_time()
+  defstruct x: System.os_time(), y: System.os_time()
 end
 
 defmodule Test do
-  def via_literal_a, do: %Point{}
-  def via_literal_b, do: %Point{}
-  def via_struct, do: struct!(Point)
-  def via_factory, do: Point.new()
+  def literal_a, do: %Point{}
+  def literal_b, do: %Point{}
 end
 
-iex> Test.via_literal_a() == Test.via_literal_a()
-true # because __struct__/0 called at compile time when use literal syntax
+iex> Test.literal_a() == Test.literal_a()
+true  # Compile-time snapshot per literal
 
-iex> Test.via_literal_a() == Test.via_literal_b()
-false # because __struct__/0 called for each literal separately at compile time
+iex> Test.literal_a() == Test.literal_b()
+false  # Each literal gets different compile-time values
 
-iex> Test.via_struct() == Test.via_struct()
-false # because __struct__/0 called at runtime when use struct!/1 and similar functions
+iex> struct!(Point) == struct!(Point)
+false  # Runtime evaluation
 ```
-
-Behavior of literal syntax when `defstruct_behavior: :override` is used may be counter-intuitive.
-This can be addressed with the `forbid_literal_syntax` option.
 
 ### `forbid_literal_syntax`
 
-When set to true, attempt to create a struct via literal syntax `%Point{}` will raise an error.
-Only the functions `Point.new/1`, `struct!/1`, `struct!/2`, `struct/1`, `struct/2` are allowed to create structs.
+Raises `CompileError` when literal syntax `%Point{}` is used.
+Forces struct creation via factory or `struct/struct!` functions.
 
-**Note:** The `struct/struct!` functions are often used when the struct module is not known at compile time, such as `struct!(dynamic_module)` or `struct!(module, attrs)`.
+Combined with `defstruct_behavior: :override`, **guarantees runtime re-evaluation for all struct creation!**
 
-When combined with `defstruct_behavior: :override`, it forbids literal syntax and makes all other ways of creating structs use dynamic defaults.
-_As an outcome you have a guarantee that dynamic defaults are always applied!_
+Uses Elixir's [compiler tracers](https://hexdocs.pm/elixir/1.19.2/Code.html#module-compilation-tracers) to detect literals even in macro expansions.
 
-This option relies on undocumented behavior of Elixir, specifically how `__struct__/0` is created and used.
-But it's not that scary in practice, because if it will not work in some future Elixir version, the worst that can happen is that you will need to add your own linter rule to forbid literal syntax.
-(Which is less bulletproof because it does not check macro expansions.)
-
-<!-- TODO: Add example of error message when literal syntax is forbidden -->
+**Requires tracer setup** (see Installation section below).
 
 ```elixir
 defmodule Point do
   use BetterStruct, defstruct_behavior: :override, forbid_literal_syntax: true
 
-  defstruct x: System.os_time(),
-            y: System.os_time()
+  defstruct x: System.os_time(), y: System.os_time()
 end
+
+%Point{}
+# Compile error: Literal struct syntax is forbidden for Point
+
+# OK: These work fine
+def create, do: Point.new()
+def create, do: struct!(Point)
+def create(args), do: struct!(Point, args)
 ```
 
 ### `factory_fn`
 
-Controls whether a factory function is created and what it's named.
+Controls factory function name:
 
-Allowed values are:
-
-- `:new` - default. Creates a `new/0` and `new/1` function.
-- Any other atom - creates a factory function with that name (e.g., `factory_fn: :create` will create `create/0` and `create/1`).
-- `false` - does not create a factory function.
-
-Example:
+- `:new` (default) - Creates `new/0` and `new/1`
+- Any atom - Creates factory with that name (e.g., `:create`)
+- `false` - No factory function
 
 ```elixir
 defmodule Point do
   use BetterStruct, factory_fn: :create
 
-  defstruct x: System.os_time(),
-            y: System.os_time()
+  defstruct x: System.os_time(), y: System.os_time()
 end
 
 iex> Point.create()
@@ -196,30 +196,87 @@ iex> Point.create(%{x: 100})
 %Point{x: 100, y: 1699876543215}
 ```
 
+## ⚠️ Risks & Tradeoffs
+
+### `defstruct_behavior: :override`
+
+**This changes fundamental Elixir behavior.**
+It overrides `__struct__/0` and `__struct__/1` to recalculate defaults at runtime, making `%Struct{}`, `struct!` and `struct` behave differently than standard Elixir.
+Literal syntax `%Point{}` still uses compile-time defaults, but logic is different: one snapshot per literal location instead of one snapshot per compilation.
+While any other way of struct creation (via `struct!(Point)`, etc) re-evaluates defaults on each call.
+This can be confusing.
+
+**Solution:** Use `forbid_literal_syntax: true` to eliminate the inconsistency by forcing all struct creation through runtime-evaluated paths that look like function calls.
+
+**Undocumented API risk:**
+While `defstruct` creates `__struct__/0` and `__struct__/1`, they're not documented as public API.
+However, risk is low — too much Elixir code relies on these functions.
+Would likely only change with major struct redesign (which might make this library obsolete anyway).
+
+**Solution:** If you're afraid of even this low risk, consider using `:ignore_defaults`.
+
+### `forbid_literal_syntax`
+
+**Risk:** Third-party macros generating `%YourStruct{}` AST internally will cause compilation errors.
+
+**Solution:** do a PR to those libraries to use `struct!/2` instead of literal syntax in macro implementation.
+
+## Adoption Strategies
+
+### 1. Conservative (Safest)
+
+Use `defstruct_behavior: :ignore_defaults`.
+
+You accept the following convention:
+
+- `%Point{}`, `struct`, `struct!` create "bare" without defaults applied
+- Factory is Single Source of Truth for defaults, and the only way to get them applied
+
+**Risk:**
+- Some libraries may assume `%Struct{}` applies defaults.
+
+### 2. Aggressive (Most Powerful)
+
+`defstruct_behavior: :override` + `forbid_literal_syntax: true` - enforces runtime re-evaluation everywhere.
+
+Remove all literal syntax from codebase.
+
+You accept the following convention:
+
+- `%Point{}` syntax is forbidden (compile error)
+- any other way of struct creation (`struct`, `struct!`, factory) always applies defaults at runtime
+
+**Risks:**
+
+- Third-party macros generating literals cause compilation errors
+- Relies on undocumented `__struct__/0` behavior
+
+### 3. Your Own!
+
+Share your approach in the issues! Feature requests are also welcome!
+
+## Recipes
 
 ### Mixing static and dynamic defaults
 
-You may notice that from the factory function's perspective, all defaults are dynamic.
-To achieve mixing static and dynamic defaults use module attributes:
+All defaults are dynamic from factory's perspective. To make some static, use module attributes:
 
 ```elixir
 defmodule Point do
   use BetterStruct
 
-  @static_x System.os_time()
+  @static_x System.os_time()  # Evaluated once at compile time
 
-  defstruct x: @static_x,
-            y: System.os_time()
+  defstruct x: @static_x,      # Static
+            y: System.os_time() # Dynamic
 end
 ```
 
-It makes explicit which defaults are static and which are dynamic.
-I would like to have this behavior built-in in Elixir, but it may be too opinionated.
-And I found it less surprising for Elixir newcomers than "static by default behavior" when you do `defstruct x: calculate_something()` and after hours of nervous debugging you realize that the function was called only once at compile time.
+The module attribute makes the distinction explicit.
 
-### Global "configuration"
+### Global configuration
 
-Instead of setting the options in each struct, you can create your own wrapper module around `BetterStruct` that sets these options for you:
+Create a wrapper to set project-wide defaults:
 
 ```elixir
 defmodule MyApp.BetterStruct do
@@ -233,50 +290,32 @@ defmodule MyApp.BetterStruct do
 end
 ```
 
-Then `use MyApp.BetterStruct` in your structs instead of `use BetterStruct, ...`.
-
-### Adoption strategy
-
-I recommend choosing one of the following strategies to adopt `BetterStruct` in your codebase.
-
-__1. Factory functions are the only place where defaults are applied__
-
-This approach is close to what we have in Golang and relies only on documented Elixir behavior.
-
-To achieve this, set `defstruct_behavior: :ignore_defaults` globally.
-Then all structs created via literal syntax `%Struct{}` or `struct/1-2` will have all fields set to `nil` (unless explicitly provided in arguments).
-
-The `new/0-1` function will be the only way to create structs with defaults applied.
-
-The risks are that some libraries (like Ecto) or parts of your codebase may rely on literal syntax or `struct/1-2` to create structs with defaults.
-
-__2. Dynamic defaults are always applied__
-
-You can enforce the usage of dynamic defaults everywhere by setting `defstruct_behavior: :override` and `forbid_literal_syntax: true` globally.
-You will need to get rid of all usages of literal syntax `%Struct{}` in your codebase.
-
-The risks are:
-
-- this setup relies on undocumented behavior of Elixir (how `__struct__/0` is created and used).
-- some libraries may have macros that create your structs via literal syntax under the hood, causing compilation errors.
-
-__3. Pick your own and tell me in the issues how it worked for you!__
-
-If you have another idea of how to adopt `BetterStruct` in your codebase, please share it in the issues!
-
-Do not hesitate to propose ideas for new features or improvements as well!
+Then `use MyApp.BetterStruct` everywhere instead of `use BetterStruct, ...`.
 
 ## Related discussions
 
-Initially I tried to propose adding dynamic defaults support to Elixir core.
-Outcomes of [the discussion](https://elixirforum.com/t/runtime-calculated-default-values-for-structs/73189/39) (you need to be logged in) and valuable feedback I got became a foundation for this package.
+Started as a [proposal for Elixir core](https://elixirforum.com/t/runtime-calculated-default-values-for-structs/73189/39). The feedback shaped this package.
 
 ## Installation
 
 ```elixir
+# mix.exs
 def deps do
   [
     {:better_struct, "~> 0.0.1"}
+  ]
+end
+```
+
+### Tracer Setup (Required for `forbid_literal_syntax`)
+
+If using `forbid_literal_syntax: true`, add to `mix.exs`:
+
+```elixir
+def project do
+  [
+    # ... other config ...
+    elixirc_options: [tracers: [BetterStruct.Tracer]]
   ]
 end
 ```
